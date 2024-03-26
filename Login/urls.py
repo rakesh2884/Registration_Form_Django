@@ -16,12 +16,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
-from Login_Form.views import RegisterView,LoginView
+from Login_Form import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("register",RegisterView.as_view(),name="api"),
-    path("Login",LoginView.as_view(),name="api"),
+    path("register",views.RegisterView.as_view(),name="api"),
+    path("Login",views.LoginView.as_view(),name="api"),
    
 
 ]
