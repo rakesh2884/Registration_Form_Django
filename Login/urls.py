@@ -22,6 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("register",views.RegisterView.as_view(),name="api"),
     path("Login",views.LoginView.as_view(),name="api"),
-   
+    path("change_password",views.ChangePasswordView.as_view()),
+    path("forgot_password",views.ForgetPasswordView.as_view()),
 
 ]
