@@ -1,12 +1,18 @@
 from rest_framework.views import APIView
+from random import randrange
+from rest_framework.generics import UpdateAPIView
 from rest_framework.response import Response
 from rest_framework import status
-from werkzeug.security import generate_password_hash, check_password_hash
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.hashers import make_password,check_password
+from django.conf import settings
+from django.core.mail import send_mail
 from .models import User
-from Login.settings import SECRET_KEY
-from jwt import encode
+from datetime import timedelta
+from django_otp.oath import totp
+import time
 import re
-from .serializers import userProfileSerializer
+from .serializers import userProfileSerializer,ChangePasswordSerializer,LoginSerializer,ForgotPasswordSerializer
 
 
 class RegisterView(APIView):
@@ -26,7 +32,7 @@ class RegisterView(APIView):
                 return Response({'message':'Make sure your password has a special character in it'}) 
             elif password!=serializer.data['confirm_password']:
                 return Response({'message':'password not match'})
-            user=User(username=serializer.data['username'],password=generate_password_hash(password),email=serializer.data['email'])
+            user=User(username=serializer.data['username'],password=make_password(password),email=serializer.data['email'])
             user.save()
             return Response({'message':'Register successful'}, status=status.HTTP_201_CREATED)
         else:
@@ -34,12 +40,48 @@ class RegisterView(APIView):
         
 class LoginView(APIView):
     def post(self, request, *args, **kwargs):
-        serializer = userProfileSerializer(data=request.data)
-        username=request.data.get('username')
-        password=request.data.get('password')
-        user = User.objects.filter(username=username).first()
-        if user and user.check_password(password):
-            token = encode({"username":username,"password":password}, SECRET_KEY)
-            return Response({'message':'Login successful','token':token},status=status.HTTP_202_ACCEPTED)
-        else:
-            return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            username=request.data.get('username')
+            password=request.data.get('password')
+            user = User.objects.get(username=username)
+            if user and check_password(password,user.password):
+                refresh = RefreshToken.for_user(user)
+                token = str(refresh.access_token)
+                return Response({'message':'Login successful','token':token},status=status.HTTP_202_ACCEPTED)
+            else:
+                return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
+            
+class ChangePasswordView(UpdateAPIView):
+    def patch(self, request, *args, **kwargs):
+        serializer = ChangePasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            password=serializer.data['old_password']
+            user = User.objects.get(username=username)
+            if user and check_password(password,user.password):
+                user.password=make_password(serializer.data['new_password'])
+                user.save()
+                return Response({'message':'password changed successfully'},status=status.HTTP_201_CREATED)
+            else:
+                return Response({'message':'User not exist'},status=status.HTTP_400_BAD_REQUEST)
+
+class ForgetPasswordView(UpdateAPIView):
+    def post(self, request, *args, **kwargs):
+        serializer=ForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            email=serializer.data['email']
+            user=User.objects.get(username=username)
+            if not user:
+                return Response({'message':'User not exist'},status=status.HTTP_400_BAD_REQUEST)
+            else:
+                secret_key = b'12345678901234567890'
+                now = int(time.time())
+                otp=totp(key=secret_key, step=60, digits=6)
+                subject = 'OTP to reset Password'
+                message = "Hey ,"+ username + " To reset your password. Click the link : " + str(otp).zfill(6)
+                email_from = settings.EMAIL_HOST_USER
+                recipient_list = [email, ]
+                send_mail( subject, message, email_from, recipient_list )
+                return Response({'message':'OTP sent successfully'})
