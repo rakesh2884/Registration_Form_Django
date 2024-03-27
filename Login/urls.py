@@ -15,7 +15,6 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-
 from Login_Form import views
 
 urlpatterns = [
@@ -25,5 +24,5 @@ urlpatterns = [
     path("change_password",views.ChangePasswordView.as_view()),
     path("forgot_password",views.ForgetPasswordView.as_view()),
     path("reset_password",views.ForgetPasswordView.as_view()),
-
+    path("task",views.TaskView.as_view()),
 ]
