@@ -1,5 +1,4 @@
 from rest_framework.views import APIView
-from random import randrange
 from rest_framework.generics import UpdateAPIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,11 +7,11 @@ from django.contrib.auth.hashers import make_password,check_password
 from django.conf import settings
 from django.core.mail import send_mail
 from .models import User
-from datetime import timedelta
 from django_otp.oath import totp
 import time
+import threading
 import re
-from .serializers import userProfileSerializer,ChangePasswordSerializer,LoginSerializer,ForgotPasswordSerializer
+from .serializers import userProfileSerializer,ChangePasswordSerializer,LoginSerializer,ForgotPasswordSerializer,ResetPasswordSerializer
 
 
 class RegisterView(APIView):
@@ -65,7 +64,11 @@ class ChangePasswordView(UpdateAPIView):
                 return Response({'message':'password changed successfully'},status=status.HTTP_201_CREATED)
             else:
                 return Response({'message':'User not exist'},status=status.HTTP_400_BAD_REQUEST)
-
+global arr
+arr=[]
+def f():
+    arr.clear()
+    threading.Timer(60, f).start()
 class ForgetPasswordView(UpdateAPIView):
     def post(self, request, *args, **kwargs):
         serializer=ForgotPasswordSerializer(data=request.data)
@@ -78,10 +81,30 @@ class ForgetPasswordView(UpdateAPIView):
             else:
                 secret_key = b'12345678901234567890'
                 now = int(time.time())
-                otp=totp(key=secret_key, step=60, digits=6)
+                otp=totp(key=secret_key, digits=6)
+                f()
+                arr.append(otp)
+                
                 subject = 'OTP to reset Password'
-                message = "Hey ,"+ username + " To reset your password. Click the link : " + str(otp).zfill(6)
+                message = "Hey ,"+ username + " To reset your password. Your OTP is : " + str(otp)
                 email_from = settings.EMAIL_HOST_USER
                 recipient_list = [email, ]
                 send_mail( subject, message, email_from, recipient_list )
                 return Response({'message':'OTP sent successfully'})
+    def patch (self, request, *args, **kwargs):
+        serializer=ResetPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            OTP=serializer.data['OTP']
+            new_password=serializer.data['new_password']
+            user = User.objects.get(username=username)
+            if user:
+                if OTP in arr:
+                    arr.clear()
+                    user.password=make_password(new_password)
+                    user.save()
+                    return Response({'message':'password changed successfully'},status=status.HTTP_201_CREATED)
+                else:
+                    return Response ({'message':'invalid OTP'},status=status.HTTP_401_UNAUTHORIZED)
+            else:
+                return Response({'message':'user not exist'},status=status.HTTP_400_BAD_REQUEST)
