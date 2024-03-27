@@ -24,5 +24,6 @@ urlpatterns = [
     path("Login",views.LoginView.as_view(),name="api"),
     path("change_password",views.ChangePasswordView.as_view()),
     path("forgot_password",views.ForgetPasswordView.as_view()),
+    path("reset_password",views.ForgetPasswordView.as_view()),
 
 ]
