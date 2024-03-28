@@ -36,3 +36,12 @@ class TaskUpdateSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True)
     task_status=serializers.CharField(required=True)
+class CommentsSerializer(serializers.Serializer):
+    M_username = serializers.CharField(required=True)
+    M_password = serializers.CharField(required=True)
+    E_username = serializers.CharField(required=True)
+    user_id=serializers.IntegerField(required=True)
+    comments=serializers.CharField(required=True)
+class CommentsCheckSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True)

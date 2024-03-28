@@ -25,4 +25,5 @@ urlpatterns = [
     path("forgot_password",views.ForgetPasswordView.as_view()),
     path("reset_password",views.ForgetPasswordView.as_view()),
     path("task",views.TaskView.as_view()),
+    path("comments",views.CommentsView.as_view()),
 ]

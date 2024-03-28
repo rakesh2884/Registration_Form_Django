@@ -6,3 +6,4 @@ db1.sqlite3
 Login/__pycache__
 Login_Form/__pycache__
 Login_Form/migrations
+Login_Form/media
