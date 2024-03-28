@@ -6,13 +6,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.hashers import make_password,check_password
 from django.conf import settings
 from django.core.mail import send_mail
-from .models import User, Task
+from .models import User, Task, Comments
 from django_otp.oath import totp
 import time
-import threading
+from django.core.files.storage import FileSystemStorage
+import os
 import re
 from .serializers import userProfileSerializer,ChangePasswordSerializer,LoginSerializer,ForgotPasswordSerializer,ResetPasswordSerializer,\
-    TaskAssignSerializer,TaskCheckSerializer,TaskUpdateSerializer
+    TaskAssignSerializer,TaskCheckSerializer,TaskUpdateSerializer,CommentsSerializer,CommentsCheckSerializer
 
 
 class RegisterView(APIView):
@@ -22,6 +23,10 @@ class RegisterView(APIView):
         if serializer.is_valid():
             username=serializer.data['username']
             password=serializer.data['password']
+            image=request.FILES['image']
+            fs = FileSystemStorage(location=settings.UPLOAD_FOLDER)
+            filename = fs.save(image.name, image)
+            i=os.path.join( settings.UPLOAD_FOLDER,image.name)
             try:
                 user=User.objects.get(username=username)
                 if user:
@@ -37,7 +42,7 @@ class RegisterView(APIView):
                     return Response({'message':'Make sure your password has a special character in it'},status=status.HTTP_400_BAD_REQUEST) 
                 elif password!=serializer.data['confirm_password']:
                     return Response({'message':'password not match'},status=status.HTTP_400_BAD_REQUEST)
-                user=User(username=username,password=make_password(password),email=serializer.data['email'],roles=serializer.data['roles'])
+                user=User(username=username,password=make_password(password),email=serializer.data['email'],roles=serializer.data['roles'],image=i)
                 user.save()
                 return Response({'message':'Register successful'}, status=status.HTTP_201_CREATED)
 
@@ -52,7 +57,7 @@ class LoginView(APIView):
                 if user and check_password(password,user.password):
                     refresh = RefreshToken.for_user(user)
                     token = str(refresh.access_token)
-                    return Response({'message':'Login successful','token':token},status=status.HTTP_202_ACCEPTED)
+                    return Response({'message':'Login successful','token':token,'image':user.image},status=status.HTTP_202_ACCEPTED)
                 else:
                     return Response({'message':'Invalid Credentials'},status=status.HTTP_401_UNAUTHORIZED)
             except:
@@ -127,21 +132,29 @@ class TaskView(APIView):
                 manager=User.objects.get(username=M_username)
                 if manager and check_password(M_password,manager.password) and manager.roles==2:
                     E_username=serializer.data['E_username']
+                    user_id=serializer.data['user_id']
                     try:
                         user=User.objects.get(username=E_username)
+                        
                         if user and user.roles==1:
                             try:
-                                t=Task.objects.get(username=E_username)
-                                if t and t.task!="Done":
-                                    return Response({'message':'task still pending'},status=status.HTTP_400_BAD_REQUEST)
+                                if user_id==user.id:
+                                    try:
+                                        t=Task.objects.get(username=E_username)
+                                        if t and t.task_status=="Pending":
+                                            return Response({'message':'task still pending'},status=status.HTTP_400_BAD_REQUEST)
+                                        else:
+                                            tasks=Task(username=serializer.data['E_username'],task=serializer.data['task'],user_id=user_id)
+                                            tasks.save()
+                                            return Response({'message':'task assigned successfully'},status=status.HTTP_201_CREATED)  
+                                    except:
+                                        tasks=Task(username=serializer.data['E_username'],task=serializer.data['task'],user_id=serializer.data['user_id'])
+                                        tasks.save()
+                                        return Response({'message':'task assigned successfully'},status=status.HTTP_201_CREATED) 
                                 else:
-                                    tasks=Task(username=serializer.data['E_username'],task=serializer.data['task'],user_id=serializer.data['user_id'])
-                                tasks.save()
-                                return Response({'message':'task assigned successfully'},status=status.HTTP_201_CREATED)  
+                                    return Response({'message':'Invalid user id'},status=status.HTTP_401_UNAUTHORIZED)
                             except:
-                                tasks=Task(username=serializer.data['E_username'],task=serializer.data['task'],user_id=serializer.data['user_id'])
-                                tasks.save()
-                                return Response({'message':'task assigned successfully'},status=status.HTTP_201_CREATED)  
+                                return Response({'message':'Invalid user id'},status=status.HTTP_401_UNAUTHORIZED)
                         else:
                             return Response({'message':'You cannot assign task to manager'},status=status.HTTP_401_UNAUTHORIZED)              
                     except:
@@ -179,11 +192,61 @@ class TaskView(APIView):
                 if user and check_password(password,user.password):
                     try:
                         t=Task.objects.get(username=username)
-                        t.task=serializer.data['task_status']
+                        t.task_status=serializer.data['task_status']
                         t.save()
                         return Response({'message':'task status changed'},status=status.HTTP_201_CREATED)
                     except Exception as e:
                         return Response({'message':'task not assign yet'})
+                else:
+                    return Response({'message':'Invalid credentials'},status=status.HTTP_400_BAD_REQUEST)
+            except:
+                return Response({'message':'user not exist'},status=status.HTTP_400_BAD_REQUEST)
+class CommentsView(APIView):
+    def post(self, request, *args, **kwargs):
+        serializer=CommentsSerializer(data=request.data)
+        if serializer.is_valid():
+            M_username=serializer.data['M_username']
+            M_password=serializer.data['M_password']        
+            try:
+                manager=User.objects.get(username=M_username)
+                if manager and check_password(M_password,manager.password):
+                    if manager.roles==2:
+                        E_username=serializer.data['E_username']
+                        user_id=serializer.data['user_id']
+                        try:
+                            user=User.objects.get(username=E_username)
+                            task=Task.objects.get(username=E_username)
+                            if task and user.roles==1:
+                                if task.user_id==user_id:
+                                    comments=Comments(username=serializer.data['E_username'],comments=serializer.data['comments'],user_id=user_id)
+                                    comments.save()
+                                    return Response({'message':'comment added successfully'},status=status.HTTP_201_CREATED)  
+                                else:
+                                    return Response({'message':'Invalid user id'},status=status.HTTP_400_BAD_REQUEST)
+                            else:
+                                return Response({'message':'user does not have any task'},status=status.HTTP_400_BAD_REQUEST)
+                        except:
+                            return Response({'message':'user does not have any task'},status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        return Response({'message':'Do not have access to comment'})
+                else:
+                    return Response({'message':'Invalid credentials'},status=status.HTTP_201_CREATED)
+            except:
+                return Response({'message':'Invalid credentials'},status=status.HTTP_201_CREATED)
+    def get(self, request, *args, **kwargs):
+        serializer=CommentsCheckSerializer(data=request.data)
+        if serializer.is_valid():
+            username=serializer.data['username']
+            password=serializer.data['password']
+            try:
+                user=User.objects.get(username=username)
+                if user and check_password(password,user.password):
+                    try:
+                        comments=Comments.objects.get(username=username)
+                        if comments:
+                            return Response({'Comments':comments.comments},status=status.HTTP_202_ACCEPTED)
+                    except:
+                        return Response({'message':'No comments'},status=status.HTTP_400_BAD_REQUEST)
                 else:
                     return Response({'message':'Invalid credentials'},status=status.HTTP_400_BAD_REQUEST)
             except:
